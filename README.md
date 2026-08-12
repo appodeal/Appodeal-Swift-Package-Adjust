@@ -1,0 +1,1 @@
+# Appodeal-Swift-Package-Adjust
