@@ -1,0 +1,149 @@
+name: Tag Release
+
+# Single source of truth for tagging an adapter release.
+#
+# Invoked two ways:
+#   - auto-tag-release.yml, on a push to main that touches Package.swift
+#   - auto-merge.yml, directly after it merges a PR
+#
+# The second caller exists because a merge performed with GITHUB_TOKEN emits no
+# events that start other workflows, so the push trigger never fires for an
+# auto-merged release PR. `uses:` is a direct job invocation rather than an
+# event, so it is not subject to that restriction.
+#
+# ── Tag numbering ──────────────────────────────────────────────────────────────
+# The adapter version has four components (ad network SDK version + adapter
+# revision), e.g. 3.7.1.0. That is not valid semver, and SwiftPM resolves by
+# semver tag, so it is encoded as:
+#
+#     x.yy.zz.aa  ->  xyyzzaa.0.<manifest revision>
+#     3.7.1.0     ->  3070100.0.0
+#     13.6.2.0    ->  13060200.0.0
+#
+# The trailing component is NOT part of the adapter version. It counts manifest
+# revisions of the same build — the existing 13060200.0.2 in the MAX package is
+# 13.6.2.0 re-released after its Appodeal dependency floor moved from 4.0.0 to
+# 4.3.0, with an unchanged binary and checksum. So a new tag is minted when the
+# manifest differs from the newest tag carrying the same version, and skipped
+# when it does not.
+#
+# The encoding here must stay identical to version_to_spm_tag in the SDK repo's
+# fastlane/Fastfile; the two were differential-tested against each other.
+
+on:
+  workflow_call:
+    outputs:
+      tag:
+        description: 'Tag that was created, empty if none was needed'
+        value: ${{ jobs.tag.outputs.tag }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.decide.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Decide the tag
+        id: decide
+        run: |
+          encode_spm_tag() {
+            local v="$1"
+            local IFS='.'
+            read -r -a p <<< "$v"
+            if [ "${#p[@]}" -lt 3 ]; then
+              printf '%s' "$v"
+            elif [ "${#p[@]}" -ge 5 ]; then
+              printf '%s%02d%02d%02d.%02d.0' "${p[0]}" "${p[1]}" "${p[2]}" "${p[3]}" "${p[4]:-0}"
+            else
+              printf '%s%02d%02d%02d.0.0' "${p[0]}" "${p[1]}" "${p[2]}" "${p[3]:-0}"
+            fi
+          }
+
+          # The binaryTarget URL carries the version:
+          #   .../SPM/AppodealBidMachineAdapter/3.7.1.0/AppodealBidMachineAdapter.xcframework.zip
+          VERSION=$(grep -oE '/[0-9]+(\.[0-9]+){3,4}/' Package.swift | head -1 | tr -d '/')
+          if [ -z "$VERSION" ]; then
+            echo "::error::No adapter version found in Package.swift"
+            exit 1
+          fi
+
+          BASE=$(encode_spm_tag "$VERSION")
+          PREFIX="${BASE%.*}"
+          EXISTING=$(git tag -l "${PREFIX}.*" | tr '\n' ' ')
+          LATEST=$(git tag -l "${PREFIX}.*" | awk -F. '{print $NF}' | sort -n | tail -1)
+
+          echo "Adapter version:  $VERSION"
+          echo "Encoded base:     $BASE"
+          echo "Existing tags:    ${EXISTING:-<none>}"
+
+          if [ -z "$LATEST" ]; then
+            TAG="${PREFIX}.0"
+            echo "→ first tag for this adapter version: $TAG"
+          elif git show "${PREFIX}.${LATEST}:Package.swift" 2>/dev/null | diff -q - Package.swift >/dev/null 2>&1; then
+            echo "→ ${PREFIX}.${LATEST} already serves this exact manifest, nothing to do"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          else
+            TAG="${PREFIX}.$((LATEST + 1))"
+            echo "→ manifest changed since ${PREFIX}.${LATEST}: $TAG"
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        if: steps.decide.outputs.tag != ''
+        run: |
+          TAG="${{ steps.decide.outputs.tag }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Every line stays indented inside this block scalar. A heredoc body or
+          # terminator at column 0 would close the scalar and break the file.
+          git tag -a "$TAG" \
+            -m "Release ${{ steps.decide.outputs.version }}" \
+            -m "SwiftPM tag for adapter version ${{ steps.decide.outputs.version }}." \
+            -m "Commit: ${{ github.sha }}"
+
+          git push origin "$TAG"
+
+          echo "✅ Created and pushed tag $TAG"
+
+      - name: Comment on the release PR
+        if: steps.decide.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.decide.outputs.tag }}
+        run: |
+          PR_NUMBER=$(gh pr list --state merged --limit 10 --json number,files \
+            --jq '[.[] | select(any(.files[]; .path == "Package.swift"))][0].number')
+
+          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+            echo "No release PR to comment on"
+            exit 0
+          fi
+
+          REPO_URL="https://github.com/${{ github.repository }}.git"
+          {
+            echo "## 🎉 Release tag created"
+            echo
+            echo "**Tag:** \`${TAG}\`  (adapter version \`${{ steps.decide.outputs.version }}\`)"
+            echo
+            echo '```swift'
+            echo ".package(url: \"${REPO_URL}\", exact: \"${TAG}\")"
+            echo '```'
+          } > /tmp/comment.md
+
+          gh pr comment "$PR_NUMBER" --body-file /tmp/comment.md

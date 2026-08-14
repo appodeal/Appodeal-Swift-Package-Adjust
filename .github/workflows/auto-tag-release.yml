@@ -1,0 +1,26 @@
+name: Auto Tag Release
+
+# Tags a release when Package.swift lands on main through a path that emits a
+# real push event — a human merge, or a merge made with a PAT.
+#
+# An auto-merge performed with GITHUB_TOKEN emits no such event, so that path is
+# covered by auto-merge.yml calling tag-release.yml directly after it merges.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Package.swift'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  tag:
+    uses: ./.github/workflows/tag-release.yml
+    permissions:
+      contents: write
+      pull-requests: write
