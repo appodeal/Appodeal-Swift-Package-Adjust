@@ -9,10 +9,14 @@ let package = Package(
         .library(
             name: "AppodealAdjustAdapter",
             targets: ["AppodealAdjustAdapterWrapper"]),
+        .library(
+            name: "AppodealAdjustAdapterDynamic",
+            targets: ["AppodealAdjustAdapterDynamic"]),
     ],
     dependencies: [
         .package(url: "https://github.com/appodeal/Appodeal-Swift-Package.git", .upToNextMajor(from: "4.0.0-alpha.1")),
         .package(url: "https://github.com/adjust/ios_sdk", exact: "5.7.0"),
+        .package(url: "https://github.com/adjust/adjust_signature_sdk.git", .upToNextMajor(from: "3.0.0")),
     ],
     targets: [
         .target(
@@ -26,10 +30,18 @@ let package = Package(
             path: "Sources",
             sources: ["Exports.swift"]
         ),
+        .target(
+            name: "AppodealAdjustAdapterDynamic",
+            dependencies: [
+                .product(name: "AdjustSignature", package: "adjust_signature_sdk"),
+            ],
+            path: "SourcesDynamic",
+            sources: ["ExportsDynamic.swift"]
+        ),
         .binaryTarget(
             name: "AppodealAdjustAdapter",
-            url: "https://appodeal-ios.s3.us-west-1.amazonaws.com/Appodeal/SPM/AppodealAdjustAdapter/5.7.0.1/AppodealAdjustAdapter.xcframework.zip",
-            checksum: "ab3f94a16cc8e8a6375e4c355083c68eb730e016899604f9add068efb2108ab2"
+            url: "https://appodeal-ios.s3.us-west-1.amazonaws.com/Appodeal/SPM/AppodealAdjustAdapter/5.7.0.2/59cf73da7c80/AppodealAdjustAdapter.xcframework.zip",
+            checksum: "59cf73da7c80ca8746e8bd370f34e23ffae89d38fe2a9519f6831a84149947a2"
         ),
 .binaryTarget(
     name: "AdjustPurchase",
