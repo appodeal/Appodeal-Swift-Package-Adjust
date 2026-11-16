@@ -12,7 +12,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/appodeal/Appodeal-Swift-Package.git", .upToNextMajor(from: "4.0.0-alpha.1")),
-        .package(url: "https://github.com/adjust/ios_sdk", exact: "5.7.0"),
+        .package(url: "https://github.com/adjust/ios_sdk", exact: "5.8.1"),
     ],
     targets: [
         .target(
@@ -28,8 +28,8 @@ let package = Package(
         ),
         .binaryTarget(
             name: "AppodealAdjustAdapter",
-            url: "https://appodeal-ios.s3.us-west-1.amazonaws.com/Appodeal/SPM/AppodealAdjustAdapter/5.7.0.3/9b1d2a047a5d/AppodealAdjustAdapter.xcframework.zip",
-            checksum: "9b1d2a047a5ddb543d049e1c99207599cd8d3e008f9bd6d549fd1c0f6c6e213f"
+            url: "https://appodeal-ios.s3.us-west-1.amazonaws.com/Appodeal/SPM/AppodealAdjustAdapter/5.8.1.0/d0c9948e8508/AppodealAdjustAdapter.xcframework.zip",
+            checksum: "d0c9948e85082b82e7220ebf2dbaf2f989781bf223b6f0afcf7a6977a3afdcf2"
         ),
 .binaryTarget(
     name: "AdjustPurchase",
